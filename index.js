@@ -29,7 +29,7 @@ const firestore = admin.firestore;
 
 const PORT = process.env.PORT || 5000;
 const ADMIN_EMAIL = process.env.ADMIN_EMAIL || 'admin@gbai-rai.com';
-const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || 'GbaiRai_2026!Admin#SecurePass';
+const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || 'ChangeMeInENV';
 const JWT_SECRET = process.env.JWT_SECRET || 'gbai_rai_secret_jwt_2026';
 const TOKEN_EXPIRY = '8h';
 
