@@ -29,7 +29,6 @@ const firestore = admin.firestore;
 
 const PORT = process.env.PORT || 5000;
 const ADMIN_EMAIL = process.env.ADMIN_EMAIL || '';
-const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || 'ChangeMeInENV';
 const JWT_SECRET = process.env.JWT_SECRET || 'gbai_rai_secret_jwt_2026';
 const TOKEN_EXPIRY = '8h';
 
@@ -75,7 +74,7 @@ async function seedInitialData() {
   }
 }
 
-app.post('/api/admin/login', (req, res) => {
+app.post('/api/admin/login', async (req, res) => {
   try {
     const { email, password } = req.body;
     if (!email || !password) {
@@ -83,9 +82,10 @@ app.post('/api/admin/login', (req, res) => {
     }
 
     const expectedEmail = String(ADMIN_EMAIL || '').trim();
-    const expectedPassword = String(ADMIN_PASSWORD || '').trim();
+    const adminConfigSnap = await db.collection('settings').doc('admin_config').get();
+    const storedPassword = adminConfigSnap.exists ? String(adminConfigSnap.data().password || '') : '';
 
-    if (String(email).trim() !== expectedEmail || String(password) !== expectedPassword) {
+    if (String(email).trim() !== expectedEmail || String(password) !== storedPassword) {
       return res.status(401).json({ success: false, message: 'Identifiants invalides' });
     }
 
