@@ -75,21 +75,21 @@ async function seedInitialData() {
 
 app.post('/api/admin/login', async (req, res) => {
   try {
-    const { username, password } = req.body;
-    if (!username || !password) {
+    const { email, password } = req.body;
+    if (!email || !password) {
       return res.status(401).json({ success: false, message: 'Identifiants invalides' });
     }
 
     const adminConfigSnap = await db.collection('settings').doc('admin_config').get();
     const adminConfig = adminConfigSnap.exists ? adminConfigSnap.data() : {};
-    const storedUsername = String(adminConfig.username || '').trim();
+    const storedEmail = String(adminConfig.email || adminConfig.username || '').trim();
     const storedPassword = String(adminConfig.password || '').trim();
 
-    if (String(username).trim() !== storedUsername || String(password) !== storedPassword) {
+    if (String(email).trim().toLowerCase() !== storedEmail.toLowerCase() || String(password) !== storedPassword) {
       return res.status(401).json({ success: false, message: 'Identifiants invalides' });
     }
 
-    const token = jwt.sign({ role: 'admin', username: String(username).trim() }, JWT_SECRET, { expiresIn: TOKEN_EXPIRY });
+    const token = jwt.sign({ role: 'admin', email: String(email).trim().toLowerCase() }, JWT_SECRET, { expiresIn: TOKEN_EXPIRY });
     return res.json({ success: true, token, message: 'Connexion réussie.' });
   } catch (error) {
     console.error('Erreur login admin:', error);
