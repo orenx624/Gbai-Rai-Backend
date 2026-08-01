@@ -28,7 +28,6 @@ const db = admin.firestore();
 const firestore = admin.firestore;
 
 const PORT = process.env.PORT || 5000;
-const ADMIN_EMAIL = process.env.ADMIN_EMAIL || '';
 const JWT_SECRET = process.env.JWT_SECRET || 'gbai_rai_secret_jwt_2026';
 const TOKEN_EXPIRY = '8h';
 
@@ -76,20 +75,21 @@ async function seedInitialData() {
 
 app.post('/api/admin/login', async (req, res) => {
   try {
-    const { email, password } = req.body;
-    if (!email || !password) {
+    const { username, password } = req.body;
+    if (!username || !password) {
       return res.status(401).json({ success: false, message: 'Identifiants invalides' });
     }
 
-    const expectedEmail = String(ADMIN_EMAIL || '').trim();
     const adminConfigSnap = await db.collection('settings').doc('admin_config').get();
-    const storedPassword = adminConfigSnap.exists ? String(adminConfigSnap.data().password || '') : '';
+    const adminConfig = adminConfigSnap.exists ? adminConfigSnap.data() : {};
+    const storedUsername = String(adminConfig.username || '').trim();
+    const storedPassword = String(adminConfig.password || '').trim();
 
-    if (String(email).trim() !== expectedEmail || String(password) !== storedPassword) {
+    if (String(username).trim() !== storedUsername || String(password) !== storedPassword) {
       return res.status(401).json({ success: false, message: 'Identifiants invalides' });
     }
 
-    const token = jwt.sign({ role: 'admin', email: String(email).trim() }, JWT_SECRET, { expiresIn: TOKEN_EXPIRY });
+    const token = jwt.sign({ role: 'admin', username: String(username).trim() }, JWT_SECRET, { expiresIn: TOKEN_EXPIRY });
     return res.json({ success: true, token, message: 'Connexion réussie.' });
   } catch (error) {
     console.error('Erreur login admin:', error);
