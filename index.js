@@ -28,7 +28,7 @@ const db = admin.firestore();
 const firestore = admin.firestore;
 
 const PORT = process.env.PORT || 5000;
-const ADMIN_EMAIL = process.env.ADMIN_EMAIL || 'admin@gbai-rai.com';
+const ADMIN_EMAIL = process.env.ADMIN_EMAIL || '';
 const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || 'ChangeMeInENV';
 const JWT_SECRET = process.env.JWT_SECRET || 'gbai_rai_secret_jwt_2026';
 const TOKEN_EXPIRY = '8h';
@@ -79,18 +79,21 @@ app.post('/api/admin/login', (req, res) => {
   try {
     const { email, password } = req.body;
     if (!email || !password) {
-      return sendError(res, 400, 'Email et mot de passe requis.');
+      return res.status(401).json({ success: false, message: 'Identifiants invalides' });
     }
 
-    if (email !== ADMIN_EMAIL || password !== ADMIN_PASSWORD) {
-      return sendError(res, 401, 'Identifiants invalides.');
+    const expectedEmail = String(ADMIN_EMAIL || '').trim();
+    const expectedPassword = String(ADMIN_PASSWORD || '').trim();
+
+    if (String(email).trim() !== expectedEmail || String(password) !== expectedPassword) {
+      return res.status(401).json({ success: false, message: 'Identifiants invalides' });
     }
 
-    const token = jwt.sign({ role: 'admin', email }, JWT_SECRET, { expiresIn: TOKEN_EXPIRY });
+    const token = jwt.sign({ role: 'admin', email: String(email).trim() }, JWT_SECRET, { expiresIn: TOKEN_EXPIRY });
     return res.json({ success: true, token, message: 'Connexion réussie.' });
   } catch (error) {
     console.error('Erreur login admin:', error);
-    return sendError(res, 500, 'Erreur d’authentification.');
+    return res.status(500).json({ success: false, message: 'Erreur d’authentification.' });
   }
 });
 
