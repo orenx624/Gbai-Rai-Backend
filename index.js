@@ -99,8 +99,7 @@ app.post('/api/admin/login', async (req, res) => {
 
 app.post('/api/admin/verify', (req, res) => {
   try {
-    const authHeader = req.headers.authorization;
-    const token = authHeader && authHeader.split(' ')[1];
+    const { token } = req.body;
     
     if (!token) {
       return res.status(401).json({ success: false, message: 'Jeton manquant' });
