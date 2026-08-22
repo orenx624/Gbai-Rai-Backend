@@ -97,6 +97,26 @@ app.post('/api/admin/login', async (req, res) => {
   }
 });
 
+app.post('/api/admin/verify', (req, res) => {
+  try {
+    const authHeader = req.headers.authorization;
+    const token = authHeader && authHeader.split(' ')[1];
+    
+    if (!token) {
+      return res.status(401).json({ success: false, message: 'Jeton manquant' });
+    }
+
+    jwt.verify(token, JWT_SECRET, (err, user) => {
+      if (err) {
+        return res.status(403).json({ success: false, message: 'Jeton invalide ou expiré' });
+      }
+      return res.json({ success: true, user });
+    });
+  } catch (error) {
+    return res.status(500).json({ success: false, message: 'Erreur de vérification' });
+  }
+});
+
 app.get('/api/participants', async (req, res) => {
   try {
     const snapshot = await db.collection('participants').get();
