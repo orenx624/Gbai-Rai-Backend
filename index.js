@@ -22,21 +22,30 @@ app.use((req, res, next) => {
 app.use(express.json({ limit: '50mb' }));
 app.use(express.urlencoded({ limit: '50mb', extended: true }));
 
+// Initialisation de Firebase Admin (Variable Vercel prioritaire)
 let serviceAccount;
 if (process.env.FIREBASE_SERVICE_ACCOUNT) {
-  serviceAccount = JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT);
+  try {
+    serviceAccount = JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT);
+  } catch (err) {
+    console.error("Erreur de parsing de FIREBASE_SERVICE_ACCOUNT:", err);
+  }
 } else {
-  const serviceAccountPath = path.resolve(__dirname, 'serviceAccountKey.json');
-  serviceAccount = require(serviceAccountPath);
+  try {
+    const serviceAccountPath = path.resolve(__dirname, 'serviceAccountKey.json');
+    serviceAccount = require(serviceAccountPath);
+  } catch (err) {
+    console.warn("Fichier serviceAccountKey.json introuvable en local.");
+  }
 }
 
-if (!admin.apps.length) {
+if (!admin.apps.length && serviceAccount) {
   admin.initializeApp({
     credential: admin.credential.cert(serviceAccount),
   });
 }
 
-const db = admin.firestore();
+const db = admin.apps.length ? admin.firestore() : null;
 const firestore = admin.firestore;
 
 const PORT = process.env.PORT || 5000;
@@ -51,39 +60,13 @@ function sendError(res, status, message) {
   return res.status(status).json({ success: false, message });
 }
 
-async function seedInitialData() {
-  const participantsSnapshot = await db.collection('participants').limit(1).get();
-  if (participantsSnapshot.empty) {
-    const batch = db.batch();
-    const sampleParticipants = [
-      { name: 'Amina', gender: 'F', photo: 'https://images.unsplash.com/photo-1524504388940-b1c1722653e1?auto=format&fit=crop&w=800&q=80', votes: 0, comments: [] },
-      { name: 'Moussa', gender: 'M', photo: 'https://images.unsplash.com/photo-1544005313-94ddf0286df2?auto=format&fit=crop&w=800&q=80', votes: 0, comments: [] },
-      { name: 'Seydou', gender: 'M', photo: 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&w=800&q=80', votes: 0, comments: [] },
-      { name: 'Rita', gender: 'F', photo: 'https://images.unsplash.com/photo-1494790108377-be9c29b29330?auto=format&fit=crop&w=800&q=80', votes: 0, comments: [] },
-    ];
-
-    sampleParticipants.forEach((participant) => {
-      batch.set(db.collection('participants').doc(), participant);
-    });
-    await batch.commit();
+// Middleware pour vérifier l'accès à la BDD
+app.use((req, res, next) => {
+  if (!db) {
+    return sendError(res, 500, "Base de données non configurée ou clé Firebase manquante.");
   }
-
-  const generalConfigRef = db.collection('config').doc('general');
-  const generalConfigSnap = await generalConfigRef.get();
-  if (!generalConfigSnap.exists) {
-    await generalConfigRef.set({
-      title: 'Gbai-Rai',
-      subtitle: 'Bienvenue',
-      description: 'Découvrez les participants du concours.',
-    });
-  }
-
-  const radioConfigRef = db.collection('config').doc('radio');
-  const radioConfigSnap = await radioConfigRef.get();
-  if (!radioConfigSnap.exists) {
-    await radioConfigRef.set({ title: 'Radio', items: [] });
-  }
-}
+  next();
+});
 
 app.post('/api/admin/login', async (req, res) => {
   try {
@@ -316,11 +299,7 @@ app.put('/api/radio', async (req, res) => {
   }
 });
 
-// ==========================================
-// ROUTES BACKEND : SONDAGES FLASH (GBAI-RAI)
-// ==========================================
-
-// 1. Récupérer tous les sondages
+// SONDAGES FLASH
 app.get('/api/sondages', async (req, res) => {
     try {
         const snapshot = await db.collection('sondages').get();
@@ -333,7 +312,6 @@ app.get('/api/sondages', async (req, res) => {
     }
 });
 
-// 2. Créer un nouveau sondage
 app.post('/api/sondages', async (req, res) => {
     try {
         const { question, options } = req.body;
@@ -361,7 +339,6 @@ app.post('/api/sondages', async (req, res) => {
     }
 });
 
-// 3. Voter pour une option d'un sondage
 app.post('/api/sondages/:id/vote', async (req, res) => {
     try {
         const { id } = req.params;
@@ -392,7 +369,6 @@ app.post('/api/sondages/:id/vote', async (req, res) => {
     }
 });
 
-// 4. Supprimer un sondage spécifique
 app.delete('/api/sondages/:id', async (req, res) => {
     try {
         const { id } = req.params;
@@ -404,7 +380,6 @@ app.delete('/api/sondages/:id', async (req, res) => {
     }
 });
 
-// 5. Supprimer TOUS les sondages
 app.delete('/api/sondages', async (req, res) => {
     try {
         const snapshot = await db.collection('sondages').get();
@@ -431,16 +406,11 @@ app.get('/api/classement', async (req, res) => {
   }
 });
 
-async function startServer() {
-  await seedInitialData();
+// Écoute locale uniquement (Ignorée par Vercel)
+if (process.env.NODE_ENV !== 'production') {
   app.listen(PORT, () => {
-    console.log(`Serveur Gbai-Rai prêt sur le port ${PORT}`);
+    console.log(`Serveur prêt sur le port ${PORT}`);
   });
 }
-
-startServer().catch((error) => {
-  console.error('Erreur démarrage serveur:', error);
-  process.exit(1);
-});
 
 module.exports = app;
