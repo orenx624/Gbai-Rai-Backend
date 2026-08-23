@@ -68,6 +68,7 @@ app.use((req, res, next) => {
   next();
 });
 
+// AUTHENTIFICATION ADMIN
 app.post('/api/admin/login', async (req, res) => {
   try {
     const { email, password } = req.body;
@@ -111,6 +112,7 @@ app.post('/api/admin/verify', (req, res) => {
   }
 });
 
+// PARTICIPANTS
 app.get('/api/participants', async (req, res) => {
   try {
     const snapshot = await db.collection('participants').get();
@@ -257,6 +259,7 @@ app.delete('/api/participants/:participantId/comments/:commentId', async (req, r
   }
 });
 
+// CONFIGURATION & RADIO
 app.get('/api/content', async (req, res) => {
   try {
     const contentSnap = await db.collection('config').doc('general').get();
@@ -299,7 +302,7 @@ app.put('/api/radio', async (req, res) => {
   }
 });
 
-// SONDAGES FLASH
+// SONDAGES FLASH & PROPOSITIONS
 app.get('/api/sondages', async (req, res) => {
     try {
         const snapshot = await db.collection('sondages').get();
@@ -395,6 +398,51 @@ app.delete('/api/sondages', async (req, res) => {
     }
 });
 
+// ROUTE PROPOSITIONS (PROPOSÉES PAR LE GRAND PUBLIC)
+app.post('/api/sondages/proposer', async (req, res) => {
+    try {
+        const { question } = req.body;
+        if (!question || !String(question).trim()) {
+            return res.status(400).json({ success: false, message: "La question est requise." });
+        }
+
+        const newProposal = {
+            question: String(question).trim(),
+            createdAt: new Date().toISOString()
+        };
+
+        const docRef = await db.collection('propositions').add(newProposal);
+        res.status(201).json({ success: true, id: docRef.id, message: "Proposition transmise à l'administrateur !" });
+    } catch (error) {
+        console.error("Erreur POST /api/sondages/proposer:", error);
+        res.status(500).json({ success: false, message: error.message });
+    }
+});
+
+app.get('/api/admin/propositions', async (req, res) => {
+    try {
+        const snapshot = await db.collection('propositions').get();
+        let propositions = snapshot.docs.map(doc => toResponseData(doc));
+        propositions.sort((a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0));
+        res.status(200).json({ success: true, data: propositions });
+    } catch (error) {
+        console.error("Erreur GET /api/admin/propositions:", error);
+        res.status(500).json({ success: false, message: error.message });
+    }
+});
+
+app.delete('/api/admin/propositions/:id', async (req, res) => {
+    try {
+        const { id } = req.params;
+        await db.collection('propositions').doc(id).delete();
+        res.status(200).json({ success: true, message: "Proposition supprimée." });
+    } catch (error) {
+        console.error("Erreur DELETE /api/admin/propositions/:id:", error);
+        res.status(500).json({ success: false, message: error.message });
+    }
+});
+
+// CLASSEMENT
 app.get('/api/classement', async (req, res) => {
   try {
     const snapshot = await db.collection('participants').get();
@@ -406,7 +454,7 @@ app.get('/api/classement', async (req, res) => {
   }
 });
 
-// Écoute locale uniquement (Ignorée par Vercel)
+// Écoute locale
 if (process.env.NODE_ENV !== 'production') {
   app.listen(PORT, () => {
     console.log(`Serveur prêt sur le port ${PORT}`);
