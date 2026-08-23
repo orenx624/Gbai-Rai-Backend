@@ -6,11 +6,9 @@ const jwt = require('jsonwebtoken');
 const admin = require('firebase-admin');
 
 const app = express();
+
+// Middleware CORS universel
 app.use(cors());
-app.use(express.json({ limit: '50mb' }));
-app.use(express.urlencoded({ limit: '50mb', extended: true }));
-
-
 app.use((req, res, next) => {
     res.header('Access-Control-Allow-Origin', '*');
     res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
@@ -21,7 +19,8 @@ app.use((req, res, next) => {
     next();
 });
 
-
+app.use(express.json({ limit: '50mb' }));
+app.use(express.urlencoded({ limit: '50mb', extended: true }));
 
 let serviceAccount;
 if (process.env.FIREBASE_SERVICE_ACCOUNT) {
@@ -317,54 +316,47 @@ app.put('/api/radio', async (req, res) => {
   }
 });
 
-
-
-
-
-
-
-
-
-
-
-
-
 // ==========================================
 // ROUTES BACKEND : SONDAGES FLASH (GBAI-RAI)
 // ==========================================
 
-// 1. Récupérer tous les sondages (ou le sondage actif)
+// 1. Récupérer tous les sondages
 app.get('/api/sondages', async (req, res) => {
     try {
-        const snapshot = await db.collection('sondages').orderBy('createdAt', 'desc').get();
-        const sondages = snapshot.docs.map(doc => toResponseData(doc));
+        const snapshot = await db.collection('sondages').get();
+        let sondages = snapshot.docs.map(doc => toResponseData(doc));
+        sondages.sort((a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0));
         res.status(200).json({ success: true, data: sondages });
     } catch (error) {
+        console.error("Erreur GET /api/sondages:", error);
         res.status(500).json({ success: false, message: error.message });
     }
 });
 
-// 2. Créer un nouveau sondage (Réservé à l'Admin)
+// 2. Créer un nouveau sondage
 app.post('/api/sondages', async (req, res) => {
     try {
-        const { question, options } = req.body; // options attendu sous forme de tableau de textes
+        const { question, options } = req.body;
+        if (!question || !options || !Array.isArray(options)) {
+            return res.status(400).json({ success: false, message: "Question et options invalides." });
+        }
         
-        // Formater les options pour inclure les votes initiaux à 0
         const formattedOptions = options.map(optText => ({
-            text: optText,
+            text: String(optText),
             votes: 0
         }));
 
         const newSondage = {
-            question,
+            question: String(question).trim(),
             options: formattedOptions,
             active: true,
-            createdAt: admin.firestore.FieldValue.serverTimestamp()
+            createdAt: new Date().toISOString()
         };
 
         const docRef = await db.collection('sondages').add(newSondage);
         res.status(201).json({ success: true, id: docRef.id, message: "Sondage créé avec succès !" });
     } catch (error) {
+        console.error("Erreur POST /api/sondages:", error);
         res.status(500).json({ success: false, message: error.message });
     }
 });
@@ -373,7 +365,7 @@ app.post('/api/sondages', async (req, res) => {
 app.post('/api/sondages/:id/vote', async (req, res) => {
     try {
         const { id } = req.params;
-        const { optionIndex } = req.body; // L'index de l'option choisie
+        const { optionIndex } = req.body;
 
         const sondageRef = db.collection('sondages').doc(id);
         const doc = await sondageRef.get();
@@ -383,35 +375,36 @@ app.post('/api/sondages/:id/vote', async (req, res) => {
         }
 
         const sondageData = doc.data();
-        let options = sondageData.options;
+        let options = sondageData.options || [];
 
         if (optionIndex === undefined || !options[optionIndex]) {
             return res.status(400).json({ success: false, message: "Option invalide." });
         }
 
-        // Incrémenter le vote de l'option ciblée
-        options[optionIndex].votes += 1;
+        options[optionIndex].votes = (options[optionIndex].votes || 0) + 1;
 
         await sondageRef.update({ options: options });
 
         res.status(200).json({ success: true, message: "Vote enregistré avec succès !", options });
     } catch (error) {
+        console.error("Erreur POST /api/sondages/:id/vote:", error);
         res.status(500).json({ success: false, message: error.message });
     }
 });
 
-// 4. Supprimer un sondage spécifique (Admin)
+// 4. Supprimer un sondage spécifique
 app.delete('/api/sondages/:id', async (req, res) => {
     try {
         const { id } = req.params;
         await db.collection('sondages').doc(id).delete();
         res.status(200).json({ success: true, message: "Sondage supprimé." });
     } catch (error) {
+        console.error("Erreur DELETE /api/sondages/:id:", error);
         res.status(500).json({ success: false, message: error.message });
     }
 });
 
-// 5. Supprimer TOUS les sondages (Pour le bouton "Tout supprimer")
+// 5. Supprimer TOUS les sondages
 app.delete('/api/sondages', async (req, res) => {
     try {
         const snapshot = await db.collection('sondages').get();
@@ -422,46 +415,10 @@ app.delete('/api/sondages', async (req, res) => {
         await batch.commit();
         res.status(200).json({ success: true, message: "Tous les sondages ont été supprimés." });
     } catch (error) {
+        console.error("Erreur DELETE /api/sondages:", error);
         res.status(500).json({ success: false, message: error.message });
     }
 });
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 app.get('/api/classement', async (req, res) => {
   try {
