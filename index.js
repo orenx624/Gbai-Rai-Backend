@@ -304,6 +304,152 @@ app.put('/api/radio', async (req, res) => {
   }
 });
 
+
+
+
+
+
+
+
+
+
+
+
+
+// ==========================================
+// ROUTES BACKEND : SONDAGES FLASH (GBAI-RAI)
+// ==========================================
+
+// 1. Récupérer tous les sondages (ou le sondage actif)
+app.get('/api/sondages', async (req, res) => {
+    try {
+        const snapshot = await db.collection('sondages').orderBy('createdAt', 'desc').get();
+        const sondages = snapshot.docs.map(doc => toResponseData(doc));
+        res.status(200).json({ success: true, data: sondages });
+    } catch (error) {
+        res.status(500).json({ success: false, message: error.message });
+    }
+});
+
+// 2. Créer un nouveau sondage (Réservé à l'Admin)
+app.post('/api/sondages', async (req, res) => {
+    try {
+        const { question, options } = req.body; // options attendu sous forme de tableau de textes
+        
+        // Formater les options pour inclure les votes initiaux à 0
+        const formattedOptions = options.map(optText => ({
+            text: optText,
+            votes: 0
+        }));
+
+        const newSondage = {
+            question,
+            options: formattedOptions,
+            active: true,
+            createdAt: admin.firestore.FieldValue.serverTimestamp()
+        };
+
+        const docRef = await db.collection('sondages').add(newSondage);
+        res.status(201).json({ success: true, id: docRef.id, message: "Sondage créé avec succès !" });
+    } catch (error) {
+        res.status(500).json({ success: false, message: error.message });
+    }
+});
+
+// 3. Voter pour une option d'un sondage
+app.post('/api/sondages/:id/vote', async (req, res) => {
+    try {
+        const { id } = req.params;
+        const { optionIndex } = req.body; // L'index de l'option choisie
+
+        const sondageRef = db.collection('sondages').doc(id);
+        const doc = await sondageRef.get();
+
+        if (!doc.exists) {
+            return res.status(404).json({ success: false, message: "Sondage introuvable." });
+        }
+
+        const sondageData = doc.data();
+        let options = sondageData.options;
+
+        if (optionIndex === undefined || !options[optionIndex]) {
+            return res.status(400).json({ success: false, message: "Option invalide." });
+        }
+
+        // Incrémenter le vote de l'option ciblée
+        options[optionIndex].votes += 1;
+
+        await sondageRef.update({ options: options });
+
+        res.status(200).json({ success: true, message: "Vote enregistré avec succès !", options });
+    } catch (error) {
+        res.status(500).json({ success: false, message: error.message });
+    }
+});
+
+// 4. Supprimer un sondage spécifique (Admin)
+app.delete('/api/sondages/:id', async (req, res) => {
+    try {
+        const { id } = req.params;
+        await db.collection('sondages').doc(id).delete();
+        res.status(200).json({ success: true, message: "Sondage supprimé." });
+    } catch (error) {
+        res.status(500).json({ success: false, message: error.message });
+    }
+});
+
+// 5. Supprimer TOUS les sondages (Pour le bouton "Tout supprimer")
+app.delete('/api/sondages', async (req, res) => {
+    try {
+        const snapshot = await db.collection('sondages').get();
+        const batch = db.batch();
+        snapshot.docs.forEach(doc => {
+            batch.delete(doc.ref);
+        });
+        await batch.commit();
+        res.status(200).json({ success: true, message: "Tous les sondages ont été supprimés." });
+    } catch (error) {
+        res.status(500).json({ success: false, message: error.message });
+    }
+});
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 app.get('/api/classement', async (req, res) => {
   try {
     const snapshot = await db.collection('participants').get();
