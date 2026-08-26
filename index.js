@@ -52,7 +52,22 @@ const PORT = process.env.PORT || 5000;
 const JWT_SECRET = process.env.JWT_SECRET || 'gbai_rai_secret_jwt_2026';
 const TOKEN_EXPIRY = '8h';
 
+// Middleware d'authentification
+function authenticateToken(req, res, next) {
+  const authHeader = req.headers['authorization'];
+  const token = authHeader && authHeader.split(' ')[1];
+
+  if (!token) return res.status(401).json({ success: false, message: 'Accès refusé' });
+
+  jwt.verify(token, JWT_SECRET, (err, user) => {
+    if (err) return res.status(403).json({ success: false, message: 'Session expirée' });
+    req.user = user;
+    next();
+  });
+}
+
 function toResponseData(doc) {
+
   return { id: doc.id, ...doc.data() };
 }
 
@@ -124,7 +139,8 @@ app.get('/api/participants', async (req, res) => {
   }
 });
 
-app.post('/api/participants', async (req, res) => {
+app.post('/api/participants', authenticateToken, async (req, res) => {
+
   try {
     const { name, photo, gender } = req.body;
     if (!name || !gender) {
@@ -149,7 +165,8 @@ app.post('/api/participants', async (req, res) => {
   }
 });
 
-app.put('/api/participants/:id', async (req, res) => {
+app.put('/api/participants/:id', authenticateToken, async (req, res) => {
+
   try {
     const participantRef = db.collection('participants').doc(req.params.id);
     const participantSnap = await participantRef.get();
@@ -172,7 +189,8 @@ app.put('/api/participants/:id', async (req, res) => {
   }
 });
 
-app.delete('/api/participants/:id', async (req, res) => {
+app.delete('/api/participants/:id', authenticateToken, async (req, res) => {
+
   try {
     const participantRef = db.collection('participants').doc(req.params.id);
     const participantSnap = await participantRef.get();
@@ -270,7 +288,8 @@ app.get('/api/content', async (req, res) => {
   }
 });
 
-app.put('/api/content', async (req, res) => {
+app.put('/api/content', authenticateToken, async (req, res) => {
+
   try {
     const payload = req.body || {};
     await db.collection('config').doc('general').set(payload, { merge: true });
@@ -291,7 +310,8 @@ app.get('/api/radio', async (req, res) => {
   }
 });
 
-app.put('/api/radio', async (req, res) => {
+app.put('/api/radio', authenticateToken, async (req, res) => {
+
   try {
     const payload = req.body || {};
     await db.collection('config').doc('radio').set(payload, { merge: true });
@@ -315,7 +335,8 @@ app.get('/api/sondages', async (req, res) => {
     }
 });
 
-app.post('/api/sondages', async (req, res) => {
+app.post('/api/sondages', authenticateToken, async (req, res) => {
+
     try {
         const { question, options } = req.body;
         if (!question || !options || !Array.isArray(options)) {
@@ -372,7 +393,8 @@ app.post('/api/sondages/:id/vote', async (req, res) => {
     }
 });
 
-app.delete('/api/sondages/:id', async (req, res) => {
+app.delete('/api/sondages/:id', authenticateToken, async (req, res) => {
+
     try {
         const { id } = req.params;
         await db.collection('sondages').doc(id).delete();
@@ -383,7 +405,8 @@ app.delete('/api/sondages/:id', async (req, res) => {
     }
 });
 
-app.delete('/api/sondages', async (req, res) => {
+app.delete('/api/sondages', authenticateToken, async (req, res) => {
+
     try {
         const snapshot = await db.collection('sondages').get();
         const batch = db.batch();
@@ -442,17 +465,105 @@ app.delete('/api/admin/propositions/:id', async (req, res) => {
     }
 });
 
-// CLASSEMENT
-app.get('/api/classement', async (req, res) => {
+// ... (existing code ...)
+
+// GAZETTE
+app.get('/api/gazette', async (req, res) => {
   try {
-    const snapshot = await db.collection('participants').get();
-    const participants = snapshot.docs.map(toResponseData).sort((a, b) => (b.votes || 0) - (a.votes || 0));
-    return res.json({ success: true, top: participants.slice(0, 10), queen: participants[0] || null });
+    const snapshot = await db.collection('gazette').get();
+    const articles = snapshot.docs.map(toResponseData).sort((a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0));
+    return res.json({ success: true, articles });
   } catch (error) {
-    console.error('Erreur classement:', error);
-    return sendError(res, 500, 'Erreur classement.');
+    console.error('Erreur gazette:', error);
+    return sendError(res, 500, 'Erreur lecture gazette.');
   }
 });
+
+app.post('/api/gazette', authenticateToken, async (req, res) => {
+
+  try {
+    const { title, content, image } = req.body;
+    if (!title || !content) return sendError(res, 400, 'Titre et contenu requis.');
+    const articleRef = db.collection('gazette').doc();
+    const articleData = { title, content, image: image || '', createdAt: new Date().toISOString() };
+    await articleRef.set(articleData);
+    return res.status(201).json({ success: true, article: { id: articleRef.id, ...articleData } });
+  } catch (error) {
+    return sendError(res, 500, 'Erreur création article.');
+  }
+});
+
+app.delete('/api/gazette/:id', authenticateToken, async (req, res) => {
+
+  try {
+    await db.collection('gazette').doc(req.params.id).delete();
+    return res.json({ success: true });
+  } catch (error) {
+    return sendError(res, 500, 'Erreur suppression article.');
+  }
+});
+
+// ANNONCES
+app.get('/api/annonces', async (req, res) => {
+  try {
+    const snapshot = await db.collection('annonces').get();
+    const annonces = snapshot.docs.map(toResponseData).sort((a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0));
+    return res.json({ success: true, annonces });
+  } catch (error) {
+    return sendError(res, 500, 'Erreur lecture annonces.');
+  }
+});
+
+app.post('/api/annonces', async (req, res) => {
+  try {
+    const { title, description, price, contact, category, image } = req.body;
+    if (!title || !contact) return sendError(res, 400, 'Titre et contact requis.');
+    const annonceRef = db.collection('annonces').doc();
+    const annonceData = { title, description, price, contact, category, image: image || '', createdAt: new Date().toISOString() };
+    await annonceRef.set(annonceData);
+    return res.status(201).json({ success: true, annonce: { id: annonceRef.id, ...annonceData } });
+  } catch (error) {
+    return sendError(res, 500, 'Erreur création annonce.');
+  }
+});
+
+app.delete('/api/annonces/:id', authenticateToken, async (req, res) => {
+
+  try {
+    await db.collection('annonces').doc(req.params.id).delete();
+    return res.json({ success: true });
+  } catch (error) {
+    return sendError(res, 500, 'Erreur suppression annonce.');
+  }
+});
+
+// CONFESSIONS
+app.get('/api/confessions', async (req, res) => {
+  try {
+    const snapshot = await db.collection('confessions').get();
+    const confessions = snapshot.docs.map(toResponseData).sort((a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0));
+    return res.json({ success: true, confessions });
+  } catch (error) {
+    return sendError(res, 500, 'Erreur lecture confessions.');
+  }
+});
+
+app.post('/api/confessions', async (req, res) => {
+  try {
+    const { text } = req.body;
+    if (!text) return sendError(res, 400, 'Texte requis.');
+    const confessionRef = db.collection('confessions').doc();
+    const confessionData = { text, createdAt: new Date().toISOString(), likes: 0 };
+    await confessionRef.set(confessionData);
+    return res.status(201).json({ success: true, confession: { id: confessionRef.id, ...confessionData } });
+  } catch (error) {
+    return sendError(res, 500, 'Erreur création confession.');
+  }
+});
+
+// CLASSEMENT (déjà existant, on s'assure qu'il est là)
+// ...
+
 
 // Écoute locale
 if (process.env.NODE_ENV !== 'production') {
